@@ -7,14 +7,24 @@ require('dotenv').config();
 const bot = new Bot(process.env.BOT_TOKEN);
 
 // Path to users.json file
-const usersFilePath = path.join(__dirname, 'users.json');
+const usersFilePath = path.join(__dirname, 'json', 'users.json');
+
+// Create json directory if it doesn't exist
+if (!fs.existsSync(path.join(__dirname, 'json'))) {
+  fs.mkdirSync(path.join(__dirname, 'json'));
+}
 
 // Function to read users data
 function readUsers() {
   try {
+    // Create users.json if it doesn't exist
+    if (!fs.existsSync(usersFilePath)) {
+      fs.writeFileSync(usersFilePath, '{}');
+    }
     const data = fs.readFileSync(usersFilePath, 'utf8');
     return JSON.parse(data);
   } catch (error) {
+    console.error('Error reading users data:', error);
     return {};
   }
 }
