@@ -1,8 +1,46 @@
 const { default: axios } = require("axios");
 const { Bot, Keyboard, InlineKeyboard } = require("grammy");
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const bot = new Bot(process.env.BOT_TOKEN);
+
+// Path to users.json file
+const usersFilePath = path.join(__dirname, 'users.json');
+
+// Function to read users data
+function readUsers() {
+  try {
+    const data = fs.readFileSync(usersFilePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    return {};
+  }
+}
+
+// Function to write users data
+function writeUsers(users) {
+  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
+}
+
+// Function to check if user is registered
+function isUserRegistered(userId) {
+  try {
+    const users = readUsers();
+    return Boolean(users[userId] && users[userId].step === registrationSteps.completed);
+  } catch (error) {
+    console.error('Error checking user registration:', error);
+    return false;
+  }
+}
+
+// Function to update user data
+function updateUser(userId, data) {
+  const users = readUsers();
+  users[userId] = { ...users[userId], ...data };
+  writeUsers(users);
+}
 
 // Simulated database (replace with actual database in production)
 const services = {
@@ -20,6 +58,12 @@ const services = {
 const districts = ["Chilanzar", "Yunusabad", "Mirabad", "Yakkasaray", "Shaykhantaur", "Almazar", "Sergeli", "Bektemir", "Mirzo Ulugbek", "Uchtepa"];
 
 let userLanguage = {};
+
+const registrationSteps = {
+  phone: "phone",
+  location: "location",
+  completed: "completed"
+};
 
 const messages = {
   ru: {
@@ -63,7 +107,8 @@ function getMessage(ctx, key) {
   return messages[lang][key];
 }
 
-bot.command("start", async (ctx) => {
+// Asosiy menu funksiyasi
+function showMainMenu(ctx) {
   const keyboard = new Keyboard()
     .text(getMessage(ctx, "selectDistrict"))
     .text("/catalog")
@@ -72,9 +117,38 @@ bot.command("start", async (ctx) => {
     .text("/language")
     .resized();
   
-  await ctx.reply(getMessage(ctx, "welcome"), {
-    reply_markup: keyboard
-  });
+  return ctx.reply(getMessage(ctx, "welcome"), { reply_markup: keyboard });
+}
+
+bot.command("start", async (ctx) => {
+  const users = readUsers();
+  const userId = ctx.from.id.toString();
+
+  // Avval foydalanuvchi ro'yxatdan o'tganligini tekshirish
+  if (isUserRegistered(userId)) {
+    const keyboard = new Keyboard()
+      .text(getMessage(ctx, "selectDistrict"))
+      .text("/catalog")
+      .row()
+      .text("/help")
+      .text("/language")
+      .resized();
+    await ctx.reply(getMessage(ctx, "welcome"), { reply_markup: keyboard });
+    return; // Funksiyadan chiqish
+  }
+
+  // Agar foydalanuvchi ro'yxatdan o'tmagan bo'lsa
+  const userData = users[userId] || {};
+  
+  // Faqat boshlang'ich ro'yxatdan o'tish holati uchun
+  if (!userData.step) {
+    updateUser(userId, { step: registrationSteps.phone });
+    const keyboard = new Keyboard()
+      .requestContact("Share your phone number")
+      .resized();
+    await ctx.reply("Please share your phone number:", { reply_markup: keyboard });
+  }
+  // Agar ro'yxatdan o'tish jarayonida bo'lsa, hech narsa qilmaslik
 });
 
 bot.command("language", async (ctx) => {
@@ -136,6 +210,55 @@ bot.command("catalog", async (ctx) => {
   await ctx.reply(`Каталог услуг (от дешевых к дорогим):\n\n${catalogInfo}`);
 });
 
-bot.on("message", (ctx) => ctx.reply(getMessage(ctx, "unknownCommand")));
+bot.on("message", async (ctx) => {
+  const users = readUsers();
+  const userId = ctx.from.id.toString();
+  const userData = users[userId] || {};
+
+  if (!isUserRegistered(userId)) {
+    if (ctx.message.contact && userData.step === registrationSteps.phone) {
+      updateUser(userId, {
+        phone: ctx.message.contact.phone_number,
+        step: registrationSteps.location
+      });
+      const keyboard = new Keyboard()
+        .requestLocation("Share your location")
+        .resized();
+      await ctx.reply("Please share your location:", { reply_markup: keyboard });
+    } else if (ctx.message.location && userData.step === registrationSteps.location) {
+      // Avval userning ma'lumotlarini saqlash
+      updateUser(userId, {
+        location: ctx.message.location,
+        step: registrationSteps.completed
+      });
+      
+      // So'ng asosiy menu klaviaturasini yaratish
+      const mainMenuKeyboard = new Keyboard()
+        .text(getMessage(ctx, "selectDistrict"))
+        .text("/catalog")
+        .row()
+        .text("/help")
+        .text("/language")
+        .resized();
+      
+      // Ro'yxatdan o'tish yakunlangani haqida xabar
+      await ctx.reply("✅ Ro'yxatdan o'tish muvaffaqiyatli yakunlandi!", {
+        reply_markup: mainMenuKeyboard
+      });
+      
+      // Xush kelibsiz xabari
+      await ctx.reply(getMessage(ctx, "welcome"), {
+        reply_markup: mainMenuKeyboard
+      });
+    }
+  } else if (!ctx.message.contact && !ctx.message.location) {
+    const text = ctx.message.text;
+    if (text && !text.startsWith('/') && 
+        !districts.includes(text) && 
+        text !== getMessage(ctx, "selectDistrict")) {
+      ctx.reply(getMessage(ctx, "unknownCommand"));
+    }
+  }
+});
 
 bot.start();
