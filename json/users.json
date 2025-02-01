@@ -1,0 +1,21 @@
+{
+  "222592599": {
+    "step": "completed",
+    "phone": "+998906313858",
+    "location": {
+      "latitude": 41.216555,
+      "longitude": 69.197588
+    }
+  },
+  "111111111": {
+    "step": "completed",
+    "phone": "+998901234567",
+    "location": {
+      "latitude": 41.123456,
+      "longitude": 69.123456
+    }
+  },
+  "222222222": {
+    "step": "phone"
+  }
+}
